@@ -1,39 +1,3 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="UTF-8">
-<title>Budget Travel Globe</title>
-<style>
-  body { margin:0; font-family:Arial,sans-serif; text-align:center; background:#000; color:white; }
-  #container { display:inline-block; position:relative; }
-  #pickDestination { padding:12px 24px; font-size:18px; background:#2c3e50; color:white; border:none; border-radius:6px; cursor:pointer; margin-bottom:12px; transition: background-color 0.3s; }
-  #pickDestination:hover { background:#34495e; }
-  #pickDestination:disabled { background:#555; cursor:not-allowed; opacity:0.7; }
-  #tooltip { position:absolute; background:rgba(44,62,80,0.95); color:white; padding:8px 16px; border-radius:8px; display:none; font-size:16px; pointer-events:none; transform:translate(-50%,-120%); white-space:nowrap; box-shadow:0 4px 12px rgba(0,0,0,0.5); }
-</style>
-</head>
-<body>
-
-<h1>Pick Your Budget Travel Destination</h1>
-<div id="container">
-  <button id="pickDestination">Pick My Travel Destination</button>
-  <div id="earthContainer" style="width:500px;height:500px;"></div>
-  <div id="tooltip"></div>
-</div>
-
-<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-<script>
-(function(){
-const destinations = [
-  { name:"Hanoi, Vietnam", lat:21.0285, lon:105.8542 },
-  { name:"Lisbon, Portugal", lat:38.7169, lon:-9.139 },
-  { name:"Budapest, Hungary", lat:47.4979, lon:19.0402 },
-  { name:"Kraków, Poland", lat:50.0647, lon:19.945 },
-  { name:"Bali, Indonesia", lat:-8.4095, lon:115.1889 },
-  { name:"Chiang Mai, Thailand", lat:18.7061, lon:98.9817 },
-  { name:"Istanbul, Turkey", lat:41.0082, lon:28.9784 },
-  { name:"Prague, Czech Republic", lat:50.0755, lon:14.4378 },
-  { name:"Sofia, Bulgaria", lat:42.6977, lon:23.3219 },
   { name:"La Paz, Bolivia", lat:-16.5, lon:-68.15 }
 ];
 
@@ -249,3 +213,4 @@ function easeInOutQuart(t){
 </script>
 </body>
 </html>
+
