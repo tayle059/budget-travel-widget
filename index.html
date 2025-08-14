@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Pick My Travel Destination</title>
+<style>
+  body { 
+    background: #f8f8f8; 
+    text-align: center; 
+    font-family: Arial, sans-serif; 
+  }
+  button {
+    padding: 10px 20px;
+    font-size: 18px;
+    background-color: #2c3e50;
+    color: white;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    margin-bottom: 15px;
+  }
+</style>
+</head>
+<body>
+
+<h1>Pick My Travel Destination</h1>
+<button id="pickDestination">Pick My Travel Destination</button>
+<div id="earthContainer" style="width: 400px; height: 400px; margin: auto;"></div>
+<h2 id="result" style="color: #2c3e50;"></h2>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+
+<script>
+(function() {
+  const destinations = [
+    { name: "Hanoi, Vietnam", lat: 21.0285, lon: 105.8542 },
+    { name: "Lisbon, Portugal", lat: 38.7169, lon: -9.139 },
+    { name: "Budapest, Hungary", lat: 47.4979, lon: 19.0402 },
+    { name: "Kraków, Poland", lat: 50.0647, lon: 19.945 },
+    { name: "Bali, Indonesia", lat: -8.4095, lon: 115.1889 },
+    { name: "Chiang Mai, Thailand", lat: 18.7061, lon: 98.9817 },
+    { name: "Istanbul, Turkey", lat: 41.0082, lon: 28.9784 },
+    { name: "Prague, Czech Republic", lat: 50.0755, lon: 14.4378 },
+    { name: "Sofia, Bulgaria", lat: 42.6977, lon: 23.3219 },
+    { name: "La Paz, Bolivia", lat: -16.5, lon: -68.15 }
+  ];
+
+  let scene, camera, renderer, earthMesh, marker;
+  let spinning = false;
+  let targetRotationY = 0;
+  let spinSpeed = 0;
+  let slowing = false;
+  let pulseDirection = 1;
+
+  init();
+  animate();
+
+  function init() {
+    scene = new THREE.Scene();
+    camera = new THREE.PerspectiveCamera(45, 1, 0.1, 1000);
+    camera.position.z = 3;
+
+    renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+    const container = document.getElementById('earthContainer');
+    renderer.setSize(container.clientWidth, container.clientHeight);
+    container.appendChild(renderer.domElement);
+
+    const light = new THREE.AmbientLight(0xffffff, 1);
+    scene.add(light);
+
+    const textureLoader = new THREE.TextureLoader();
+    textureLoader.load(
+      'https://threejs.org/examples/textures/land_ocean_ice_cloud_2048.jpg',
+      function(texture) {
+        const geometry = new THREE.SphereGeometry(1, 64, 64);
+        const material = new THREE.MeshPhongMaterial({ map: texture });
+        earthMesh = new THREE.Mesh(geometry, material);
+        scene.add(earthMesh);
+      }
+    );
+
+    document.getElementById('pickDestination').addEventListener('click', () => {
+      if (!spinning && earthMesh) {
+        const choice = destinations[Math.floor(Math.random() * destinations.length)];
+        document.getElementById('result').textContent = "";
+        spinToDestination(choice);
+      }
+    });
+
+    window.addEventListener('resize', onWindowResize);
+  }
+
+  function spinToDestination(destination) {
+    spinning = true;
+    slowing = false;
+    spinSpeed = 0.3;
+
+    const lonRad = destination.lon * (Math.PI / 180);
+    const extraSpins = Math.PI * 4;
+    targetRotationY = -lonRad + extraSpins;
+
+    earthMesh.userData.finalDestination = destination;
+
+    setTimeout(() => slowing = true, 1500);
+  }
+
+  function addMarker(lat, lon) {
+    if (marker) scene.remove(marker);
+
+    const markerGeo = new THREE.SphereGeometry(0.02, 16, 16);
+    const markerMat = new THREE.MeshBasicMaterial({ color: 0xff0000 });
+    marker = new THREE.Mesh(markerGeo, markerMat);
+
+    const radius = 1.001;
+    const latRad = THREE.MathUtils.degToRad(lat);
+    const lonRad = THREE.MathUtils.degToRad(lon);
+
+    marker.position.x = radius * Math.cos(latRad) * Math.cos(lonRad);
+    marker.position.y = radius * Math.sin(latRad);
+    marker.position.z = -radius * Math.cos(latRad) * Math.sin(lonRad);
+
+    scene.add(marker);
+  }
+
+  function animate() {
+    requestAnimationFrame(animate);
+
+    if (spinning && earthMesh) {
+      if (!slowing) {
+        earthMesh.rotation.y += spinSpeed;
+      } else {
+        const diff = targetRotationY - earthMesh.rotation.y;
+        earthMesh.rotation.y += diff * 0.05;
+
+        if (Math.abs(diff) < 0.002) {
+          spinning = false;
+          const dest = earthMesh.userData.finalDestination;
+          document.getElementById('result').textContent =
+            "Your next budget trip: " + dest.name;
+          addMarker(dest.lat, dest.lon);
+        }
+      }
+    }
+
+    if (marker) {
+      marker.scale.multiplyScalar(1 + 0.005 * pulseDirection);
+      if (marker.scale.x > 1.2 || marker.scale.x < 0.9) pulseDirection *= -1;
+    }
+
+    renderer.render(scene, camera);
+  }
+
+  function onWindowResize() {
+    const container = document.getElementById('earthContainer');
+    camera.aspect = container.clientWidth / container.clientHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(container.clientWidth, container.clientHeight);
+  }
+})();
+</script>
+
+</body>
+</html>
