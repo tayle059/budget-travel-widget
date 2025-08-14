@@ -2,13 +2,13 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>Budget Travel Picker Globe</title>
+<title>Budget Travel Globe Picker</title>
 <style>
-  body { 
+  body {
     margin: 0;
-    background: #f0f0f0; 
-    text-align: center; 
-    font-family: Arial, sans-serif; 
+    font-family: Arial, sans-serif;
+    text-align: center;
+    background: #f0f0f0;
   }
   #container {
     display: inline-block;
@@ -24,17 +24,17 @@
     cursor: pointer;
     margin-bottom: 12px;
   }
-  #resultTooltip {
+  #tooltip {
     position: absolute;
-    top: 10px;
-    left: 50%;
-    transform: translateX(-50%);
-    background: rgba(44, 62, 80, 0.9);
+    background: rgba(44,62,80,0.9);
     color: white;
     padding: 6px 12px;
     border-radius: 6px;
     display: none;
     font-size: 16px;
+    pointer-events: none;
+    transform: translate(-50%, -120%);
+    white-space: nowrap;
   }
 </style>
 </head>
@@ -44,13 +44,12 @@
 <div id="container">
   <button id="pickDestination">Pick My Travel Destination</button>
   <div id="earthContainer" style="width: 400px; height: 400px;"></div>
-  <div id="resultTooltip"></div>
+  <div id="tooltip"></div>
 </div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-
 <script>
-(function() {
+(function(){
   const destinations = [
     { name: "Hanoi, Vietnam", lat: 21.0285, lon: 105.8542 },
     { name: "Lisbon, Portugal", lat: 38.7169, lon: -9.139 },
@@ -64,17 +63,21 @@
     { name: "La Paz, Bolivia", lat: -16.5, lon: -68.15 }
   ];
 
-  let scene, camera, renderer, earthMesh, markers = [], selectedMarker;
-  let spinning = false, targetRotationY = 0, spinSpeed = 0, slowing = false, pulseDir = 1;
   const container = document.getElementById('earthContainer');
-  const tooltip = document.getElementById('resultTooltip');
+  const tooltip = document.getElementById('tooltip');
+
+  let scene, camera, renderer, earthMesh;
+  let markers = [], selectedMarker = null;
+  let spinning = false, slowing = false, spinSpeed = 0, targetRotationY = 0;
+  let glowSprite;
 
   init();
   animate();
 
   function init() {
     scene = new THREE.Scene();
-    camera = new THREE.PerspectiveCamera(45, 1, 0.1, 1000);
+
+    camera = new THREE.PerspectiveCamera(45, container.clientWidth/container.clientHeight, 0.1, 1000);
     camera.position.z = 3;
 
     renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
@@ -84,23 +87,43 @@
     const light = new THREE.AmbientLight(0xffffff, 1);
     scene.add(light);
 
-    const textureLoader = new THREE.TextureLoader();
-    textureLoader.load(
-      'https://threejs.org/examples/textures/land_ocean_ice_cloud_2048.jpg',
-      function(texture) {
-        const geometry = new THREE.SphereGeometry(1, 64, 64);
-        const material = new THREE.MeshPhongMaterial({ map: texture });
-        earthMesh = new THREE.Mesh(geometry, material);
-        scene.add(earthMesh);
+    const loader = new THREE.TextureLoader();
+    loader.load('https://threejs.org/examples/textures/land_ocean_ice_cloud_2048.jpg', function(texture){
+      const geometry = new THREE.SphereGeometry(1, 64, 64);
+      const material = new THREE.MeshPhongMaterial({ map: texture });
+      earthMesh = new THREE.Mesh(geometry, material);
+      scene.add(earthMesh);
 
-        addAllMarkers();
-      }
-    );
+      // Add markers
+      destinations.forEach(dest => {
+        const geo = new THREE.SphereGeometry(0.02, 8, 8);
+        const mat = new THREE.MeshBasicMaterial({ color: 0x888888 });
+        const marker = new THREE.Mesh(geo, mat);
+        const pos = latLonToXYZ(dest.lat, dest.lon, 1.01);
+        marker.position.set(pos.x, pos.y, pos.z);
+        scene.add(marker);
+        marker.userData = { destination: dest };
+        markers.push(marker);
+      });
+
+      // Glow sprite for selected destination
+      const spriteMaterial = new THREE.SpriteMaterial({
+        color: 0xff0000,
+        transparent: true,
+        opacity: 0.6,
+        blending: THREE.AdditiveBlending
+      });
+      glowSprite = new THREE.Sprite(spriteMaterial);
+      glowSprite.scale.set(0.2,0.2,0.2);
+      glowSprite.visible = false;
+      scene.add(glowSprite);
+    });
 
     document.getElementById('pickDestination').addEventListener('click', () => {
       if (!spinning && earthMesh) {
         const choice = destinations[Math.floor(Math.random() * destinations.length)];
         tooltip.style.display = "none";
+        glowSprite.visible = false;
         spinToDestination(choice);
       }
     });
@@ -108,69 +131,82 @@
     window.addEventListener('resize', onWindowResize);
   }
 
-  function addAllMarkers() {
-    destinations.forEach(dest => {
-      const geo = new THREE.SphereGeometry(0.015, 8, 8);
-      const mat = new THREE.MeshBasicMaterial({ color: 0x888888 });
-      const marker = new THREE.Mesh(geo, mat);
-      const radius = 1.01;
-      const latRad = THREE.MathUtils.degToRad(dest.lat);
-      const lonRad = THREE.MathUtils.degToRad(dest.lon);
-      marker.position.x = radius * Math.cos(latRad) * Math.cos(lonRad);
-      marker.position.y = radius * Math.sin(latRad);
-      marker.position.z = -radius * Math.cos(latRad) * Math.sin(lonRad);
-      scene.add(marker);
-      markers.push(marker);
-      marker.userData = { destination: dest };
-    });
+  function latLonToXYZ(lat, lon, radius){
+    const phi = (90 - lat) * (Math.PI/180);
+    const theta = (lon + 180) * (Math.PI/180);
+    return {
+      x: -radius * Math.sin(phi) * Math.cos(theta),
+      y: radius * Math.cos(phi),
+      z: radius * Math.sin(phi) * Math.sin(theta)
+    };
   }
 
-  function spinToDestination(dest) {
+  function spinToDestination(dest){
     spinning = true; slowing = false; spinSpeed = 0.3;
 
-    const lonRad = dest.lon * (Math.PI / 180);
-    const extraSpins = Math.PI * 4;
-    targetRotationY = -lonRad + extraSpins;
-
+    targetRotationY = - (dest.lon * Math.PI/180) + 2*Math.PI*3; // 3 extra spins
     selectedMarker = markers.find(m => m.userData.destination === dest);
 
-    setTimeout(() => slowing = true, 1500);
+    setTimeout(()=>slowing=true, 1500);
   }
 
-  function animate() {
+  function animate(){
     requestAnimationFrame(animate);
 
-    if (spinning && earthMesh) {
-      if (!slowing) {
+    if (spinning && earthMesh){
+      if (!slowing){
         earthMesh.rotation.y += spinSpeed;
       } else {
         const diff = targetRotationY - earthMesh.rotation.y;
-        earthMesh.rotation.y += diff * 0.05;
-        camera.position.z = 3 - Math.abs(diff)*0.2; // zoom slightly
-        camera.lookAt(scene.position);
+        earthMesh.rotation.y += diff*0.05;
 
-        if (Math.abs(diff) < 0.002) {
-          spinning = false;
-          tooltip.textContent = "Your next budget trip: " + selectedMarker.userData.destination.name;
-          tooltip.style.display = "block";
+        if (Math.abs(diff)<0.002){
+          spinning=false;
+          showTooltip(selectedMarker.userData.destination.name);
+          glowSelectedMarker();
         }
       }
     }
 
-    // Pulse selected marker
-    if (selectedMarker) {
-      selectedMarker.scale.multiplyScalar(1 + 0.01 * pulseDir);
-      if (selectedMarker.scale.x > 1.3 || selectedMarker.scale.x < 0.9) pulseDir *= -1;
+    // Update selected marker glow
+    if (selectedMarker){
+      glowSprite.position.copy(selectedMarker.position);
+      glowSprite.scale.set(0.2 + 0.05*Math.sin(Date.now()*0.01),0.2 + 0.05*Math.sin(Date.now()*0.01),1);
+      glowSprite.visible = true;
       selectedMarker.material.color.set(0xff0000);
+    }
+
+    // Project tooltip position
+    if (selectedMarker && tooltip.style.display === "block"){
+      const vector = selectedMarker.position.clone();
+      vector.project(camera);
+      const x = (vector.x * 0.5 + 0.5) * container.clientWidth;
+      const y = (-vector.y * 0.5 + 0.5) * container.clientHeight;
+      tooltip.style.left = `${x}px`;
+      tooltip.style.top = `${y}px`;
     }
 
     renderer.render(scene, camera);
   }
 
-  function onWindowResize() {
+  function glowSelectedMarker(){
+    // glowSprite already visible and pulsating in animate()
+  }
+
+  function showTooltip(text){
+    tooltip.textContent = "Your next budget trip: " + text;
+    tooltip.style.display = "block";
+  }
+
+  function onWindowResize(){
     camera.aspect = container.clientWidth / container.clientHeight;
     camera.updateProjectionMatrix();
     renderer.setSize(container.clientWidth, container.clientHeight);
   }
+
 })();
 </script>
+
+</body>
+</html>
+
