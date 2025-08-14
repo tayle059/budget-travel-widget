@@ -1,140 +1,397 @@
-import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.158/build/three.module.js";
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Budget Travel Globe</title>
+<style>
+  body { margin:0; font-family:Arial,sans-serif; text-align:center; background:#000; color:white; }
+  #container { display:inline-block; position:relative; }
+  #pickDestination { padding:12px 24px; font-size:18px; background:#2c3e50; color:white; border:none; border-radius:6px; cursor:pointer; margin-bottom:12px; transition: background-color 0.3s; }
+  #pickDestination:hover { background:#34495e; }
+  #pickDestination:disabled { background:#555; cursor:not-allowed; opacity:0.7; }
+  #tooltip { position:absolute; background:rgba(44,62,80,0.95); color:white; padding:8px 16px; border-radius:8px; display:none; font-size:16px; pointer-events:none; transform:translate(-50%,-120%); white-space:nowrap; box-shadow:0 4px 12px rgba(0,0,0,0.5); }
+</style>
+</head>
+<body>
+
+<h1>Pick Your Budget Travel Destination</h1>
+<div id="container">
+  <button id="pickDestination">Pick My Travel Destination</button>
+  <div id="earthContainer" style="width:500px;height:500px;"></div>
+  <div id="tooltip"></div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+(function(){
+const destinations = [
+  { name:"Hanoi, Vietnam", lat:21.0285, lon:105.8542 },
+  { name:"Lisbon, Portugal", lat:38.7169, lon:-9.139 },
+  { name:"Budapest, Hungary", lat:47.4979, lon:19.0402 },
+  { name:"Kraków, Poland", lat:50.0647, lon:19.945 },
+  { name:"Bali, Indonesia", lat:-8.4095, lon:115.1889 },
+  { name:"Chiang Mai, Thailand", lat:18.7061, lon:98.9817 },
+  { name:"Istanbul, Turkey", lat:41.0082, lon:28.9784 },
+  { name:"Prague, Czech Republic", lat:50.0755, lon:14.4378 },
+  { name:"Sofia, Bulgaria", lat:42.6977, lon:23.3219 },
+  { name:"La Paz, Bolivia", lat:-16.5, lon:-68.15 }
+];
 
 const container = document.getElementById('earthContainer');
 const tooltip = document.getElementById('tooltip');
 const button = document.getElementById('pickDestination');
 
-let scene, camera, renderer;
-let earthGroup, earthMesh, cloudMesh, glowSprite;
+let scene, camera, renderer, earthGroup, earthMesh, cloudMesh, atmosphereMesh;
 let markers = [], selectedMarker = null;
-let isSpinning = false, spinStartTime, SPIN_DURATION = 3000;
-const TOTAL_SPINS = 3;
-
-const destinations = [
-  { name: "Paris, France", lat: 48.8566, lon: 2.3522 },
-  { name: "Tokyo, Japan", lat: 35.6895, lon: 139.6917 },
-  { name: "New York, USA", lat: 40.7128, lon: -74.0060 },
-  { name: "Sydney, Australia", lat: -33.8688, lon: 151.2093 },
-  { name: "Cape Town, South Africa", lat: -33.9249, lon: 18.4241 }
-];
+let isSpinning = false;
+let spinStartTime = 0;
+const SPIN_DURATION = 3000; // 3 seconds
+const TOTAL_SPINS = 5; // Always 5 complete rotations
+let glowSprite;
 
 init();
 animate();
 
-function init() {
+function init(){
   scene = new THREE.Scene();
   camera = new THREE.PerspectiveCamera(45, container.clientWidth/container.clientHeight, 0.1, 1000);
-  camera.position.set(0, 0, 3);
-
-  renderer = new THREE.WebGLRenderer({ antialias: true });
+  camera.position.z = 3;
+  renderer = new THREE.WebGLRenderer({antialias:true, alpha:true});
   renderer.setSize(container.clientWidth, container.clientHeight);
   container.appendChild(renderer.domElement);
 
-  // Ambient & directional light
-  scene.add(new THREE.AmbientLight(0xffffff, 0.4));
-  const dirLight = new THREE.DirectionalLight(0xffffff, 1);
-  dirLight.position.set(5, 3, 5);
-  scene.add(dirLight);
+  // Stars
+  const starGeo = new THREE.BufferGeometry();
+  const starCount = 2000;
+  const positions = [];
+  for(let i = 0; i < starCount; i++){
+    positions.push(
+      (Math.random() - 0.5) * 200,
+      (Math.random() - 0.5) * 200,
+      (Math.random() - 0.5) * 200
+    );
+  }
+  starGeo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+  const stars = new THREE.Points(starGeo, new THREE.PointsMaterial({color: 0xffffff, size: 0.3}));
+  scene.add(stars);
 
-  // Earth group
+  // Lights
+  scene.add(new THREE.AmbientLight(0xffffff, 0.4));
+  const directional = new THREE.DirectionalLight(0xffffff, 1);
+  directional.position.set(5, 3, 5);
+  scene.add(directional);
+
+  // Create earth group to contain all earth-related objects
   earthGroup = new THREE.Group();
   scene.add(earthGroup);
 
-  // Generate pixel Earth texture
-  const earthTexture = new THREE.CanvasTexture(generatePixelEarth(64, 32));
+  const loader = new THREE.TextureLoader();
+
+  // Create realistic Google Maps-style Earth texture
+  function createRealisticEarthTexture() {
+    const canvas = document.createElement('canvas');
+    canvas.width = 1024;
+    canvas.height = 512;
+    const ctx = canvas.getContext('2d');
+    
+    // Base ocean color (deep blue like Google Maps)
+    ctx.fillStyle = '#0f4c75';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    
+    // Function to draw landmass
+    function drawLandmass(x, y, width, height, color = '#2d5016') {
+      ctx.fillStyle = color;
+      ctx.fillRect(x, y, width, height);
+    }
+    
+    // Function to draw more realistic continent shapes
+    function drawContinent(points, color = '#2d5016') {
+      ctx.fillStyle = color;
+      ctx.beginPath();
+      ctx.moveTo(points[0].x, points[0].y);
+      for (let i = 1; i < points.length; i++) {
+        ctx.lineTo(points[i].x, points[i].y);
+      }
+      ctx.closePath();
+      ctx.fill();
+    }
+    
+    // North America (rough shape)
+    drawContinent([
+      {x: 80, y: 80}, {x: 200, y: 60}, {x: 220, y: 120}, 
+      {x: 180, y: 180}, {x: 120, y: 200}, {x: 60, y: 160}
+    ], '#3d7c47');
+    
+    // South America
+    drawContinent([
+      {x: 150, y: 220}, {x: 180, y: 200}, {x: 200, y: 280},
+      {x: 190, y: 380}, {x: 160, y: 400}, {x: 140, y: 350}
+    ], '#2d5016');
+    
+    // Africa
+    drawContinent([
+      {x: 480, y: 150}, {x: 520, y: 140}, {x: 540, y: 200},
+      {x: 530, y: 300}, {x: 510, y: 380}, {x: 480, y: 350}, {x: 470, y: 250}
+    ], '#4a7c59');
+    
+    // Europe
+    drawContinent([
+      {x: 450, y: 100}, {x: 500, y: 80}, {x: 520, y: 120}, {x: 480, y: 140}
+    ], '#5d8a3a');
+    
+    // Asia
+    drawContinent([
+      {x: 520, y: 60}, {x: 700, y: 40}, {x: 800, y: 80}, 
+      {x: 820, y: 140}, {x: 780, y: 200}, {x: 600, y: 180}, {x: 540, y: 120}
+    ], '#3d5c2e');
+    
+    // Australia
+    drawContinent([
+      {x: 750, y: 320}, {x: 820, y: 310}, {x: 840, y: 340}, {x: 800, y: 360}
+    ], '#4a7c59');
+    
+    // Greenland
+    drawContinent([
+      {x: 320, y: 40}, {x: 360, y: 30}, {x: 380, y: 80}, {x: 340, y: 90}
+    ], '#6b8e23');
+    
+    // Add realistic details with gradients and shading
+    const gradient = ctx.createRadialGradient(canvas.width/2, canvas.height/2, 0, canvas.width/2, canvas.height/2, canvas.width/2);
+    gradient.addColorStop(0, 'rgba(255,255,255,0.1)');
+    gradient.addColorStop(1, 'rgba(0,0,0,0.3)');
+    ctx.fillStyle = gradient;
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    
+    // Add some terrain texture
+    const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    const data = imageData.data;
+    
+    for (let i = 0; i < data.length; i += 4) {
+      // Add subtle noise for terrain effect
+      const noise = (Math.random() - 0.5) * 15;
+      data[i] = Math.max(0, Math.min(255, data[i] + noise));
+      data[i + 1] = Math.max(0, Math.min(255, data[i + 1] + noise));
+      data[i + 2] = Math.max(0, Math.min(255, data[i + 2] + noise));
+    }
+    
+    ctx.putImageData(imageData, 0, 0);
+    
+    return canvas;
+  }
+
+  // Earth with realistic texture
   const earthGeo = new THREE.SphereGeometry(1, 64, 64);
-  const earthMat = new THREE.MeshPhongMaterial({ map: earthTexture });
+  const earthTexture = new THREE.CanvasTexture(createRealisticEarthTexture());
+  const earthMat = new THREE.MeshPhongMaterial({
+    map: earthTexture,
+    shininess: 30,
+    specular: new THREE.Color(0x222222)
+  });
   earthMesh = new THREE.Mesh(earthGeo, earthMat);
   earthGroup.add(earthMesh);
 
-  // Clouds (simple transparent sphere)
+  // Add realistic cloud layer like Google Earth
+  function createRealisticCloudTexture() {
+    const canvas = document.createElement('canvas');
+    canvas.width = 512;
+    canvas.height = 256;
+    const ctx = canvas.getContext('2d');
+    
+    // Clear background
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    
+    // Create realistic cloud formations
+    const cloudRegions = [
+      {x: 80, y: 60, w: 100, h: 40},   // North Pacific
+      {x: 300, y: 80, w: 80, h: 30},   // Atlantic
+      {x: 450, y: 100, w: 120, h: 50}, // Asia monsoon
+      {x: 150, y: 180, w: 90, h: 35},  // South America
+      {x: 0, y: 120, w: 60, h: 25},    // Wrap around Pacific
+      {x: 480, y: 40, w: 40, h: 20}    // Arctic
+    ];
+    
+    cloudRegions.forEach(region => {
+      // Create gradient for each cloud region
+      const gradient = ctx.createRadialGradient(
+        region.x + region.w/2, region.y + region.h/2, 0,
+        region.x + region.w/2, region.y + region.h/2, Math.max(region.w, region.h)/2
+      );
+      gradient.addColorStop(0, 'rgba(255, 255, 255, 0.8)');
+      gradient.addColorStop(0.6, 'rgba(255, 255, 255, 0.4)');
+      gradient.addColorStop(1, 'rgba(255, 255, 255, 0)');
+      
+      ctx.fillStyle = gradient;
+      ctx.fillRect(region.x, region.y, region.w, region.h);
+      
+      // Add smaller cloud details
+      for (let i = 0; i < 15; i++) {
+        const cloudX = region.x + Math.random() * region.w;
+        const cloudY = region.y + Math.random() * region.h;
+        const cloudRadius = Math.random() * 8 + 3;
+        const opacity = Math.random() * 0.4 + 0.2;
+        
+        const smallGradient = ctx.createRadialGradient(cloudX, cloudY, 0, cloudX, cloudY, cloudRadius);
+        smallGradient.addColorStop(0, `rgba(255, 255, 255, ${opacity})`);
+        smallGradient.addColorStop(1, 'rgba(255, 255, 255, 0)');
+        
+        ctx.fillStyle = smallGradient;
+        ctx.beginPath();
+        ctx.arc(cloudX, cloudY, cloudRadius, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    });
+    
+    return canvas;
+  }
+
+  // Realistic clouds
   const cloudGeo = new THREE.SphereGeometry(1.01, 64, 64);
-  const cloudMat = new THREE.MeshPhongMaterial({ transparent: true, opacity: 0.3, color: 0xffffff });
+  const cloudTexture = new THREE.CanvasTexture(createRealisticCloudTexture());
+  const cloudMat = new THREE.MeshPhongMaterial({
+    map: cloudTexture,
+    transparent: true,
+    opacity: 0.6,
+    blending: THREE.NormalBlending
+  });
   cloudMesh = new THREE.Mesh(cloudGeo, cloudMat);
   earthGroup.add(cloudMesh);
 
-  // Markers
+  // Atmosphere
+  const atmGeo = new THREE.SphereGeometry(1.03, 64, 64);
+  const atmMat = new THREE.MeshBasicMaterial({
+    color: 0x00aaff, 
+    transparent: true, 
+    opacity: 0.1, 
+    side: THREE.BackSide
+  });
+  atmosphereMesh = new THREE.Mesh(atmGeo, atmMat);
+  earthGroup.add(atmosphereMesh);
+
+  // Restore normal-sized markers
   destinations.forEach(dest => {
-    const markerGeo = new THREE.SphereGeometry(0.025, 8, 8);
-    const markerMat = new THREE.MeshBasicMaterial({ color: 0x888888 });
-    const marker = new THREE.Mesh(markerGeo, markerMat);
+    const geo = new THREE.SphereGeometry(0.025, 8, 8);
+    const mat = new THREE.MeshBasicMaterial({color: 0x888888});
+    const marker = new THREE.Mesh(geo, mat);
     const pos = latLonToXYZ(dest.lat, dest.lon, 1.02);
     marker.position.set(pos.x, pos.y, pos.z);
-    marker.userData = { destination: dest };
+    marker.userData = {destination: dest};
     markers.push(marker);
     earthGroup.add(marker);
   });
 
   // Glow sprite
-  const spriteMat = new THREE.SpriteMaterial({ color: 0xff4444, transparent: true, opacity: 0.8 });
+  const spriteMat = new THREE.SpriteMaterial({
+    color: 0xff4444, 
+    transparent: true, 
+    opacity: 0.8, 
+    blending: THREE.AdditiveBlending
+  });
   glowSprite = new THREE.Sprite(spriteMat);
   glowSprite.scale.set(0.15, 0.15, 0.15);
   glowSprite.visible = false;
   scene.add(glowSprite);
 
   button.addEventListener('click', startSpin);
-  window.addEventListener('resize', onResize);
-}
 
-function generatePixelEarth(width, height) {
-  const canvas = document.createElement('canvas');
-  canvas.width = width;
-  canvas.height = height;
-  const ctx = canvas.getContext('2d');
-
-  // Simple pixel continents
-  for (let y = 0; y < height; y++) {
-    for (let x = 0; x < width; x++) {
-      const lon = (x / width) * 360 - 180;
-      const lat = 90 - (y / height) * 180;
-      const color = lat > -60 && lat < 60 && Math.random() > 0.7 ? '#228B22' : '#1E90FF';
-      ctx.fillStyle = color;
-      ctx.fillRect(x, y, 1, 1);
-    }
-  }
-  return canvas;
+  window.addEventListener('resize', () => {
+    camera.aspect = container.clientWidth / container.clientHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(container.clientWidth, container.clientHeight);
+  });
 }
 
 function latLonToXYZ(lat, lon, radius) {
-  const phi = THREE.MathUtils.degToRad(90 - lat);
-  const theta = THREE.MathUtils.degToRad(lon + 180);
+  // Standard spherical coordinates - trying different mapping
+  const phi = THREE.MathUtils.degToRad(90 - lat); // Polar angle from north pole
+  const theta = THREE.MathUtils.degToRad(lon); // Azimuthal angle from prime meridian
+  
   return {
-    x: -(radius * Math.sin(phi) * Math.cos(theta)),
+    x: radius * Math.sin(phi) * Math.sin(theta),
     y: radius * Math.cos(phi),
-    z: radius * Math.sin(phi) * Math.sin(theta)
+    z: radius * Math.sin(phi) * Math.cos(theta)
   };
 }
 
 function startSpin() {
   if (isSpinning) return;
-  tooltip.style.display = "none";
+  
+  // Hide previous selection
+  hideTooltip();
   glowSprite.visible = false;
+  
+  // Select random destination
   selectedMarker = markers[Math.floor(Math.random() * markers.length)];
+  
+  // Disable button during spin
   button.disabled = true;
   button.textContent = "Spinning...";
+  
+  // Start spinning
   isSpinning = true;
   spinStartTime = Date.now();
 }
 
+function hideTooltip() {
+  tooltip.style.display = "none";
+}
+
+function showTooltip() {
+  if (!selectedMarker) return;
+  
+  tooltip.textContent = "Your next budget trip: " + selectedMarker.userData.destination.name;
+  tooltip.style.display = "block";
+  updateTooltipPosition();
+}
+
+function updateTooltipPosition() {
+  if (!selectedMarker || tooltip.style.display === "none") return;
+  
+  const vector = selectedMarker.position.clone();
+  vector.applyMatrix4(earthGroup.matrixWorld);
+  vector.project(camera);
+  
+  const x = (vector.x * 0.5 + 0.5) * container.clientWidth;
+  const y = (-vector.y * 0.5 + 0.5) * container.clientHeight;
+  
+  tooltip.style.left = `${x}px`;
+  tooltip.style.top = `${y}px`;
+}
+
+function easeInOutQuart(t) {
+  return t < 0.5 ? 8 * t * t * t * t : 1 - 8 * (--t) * t * t * t;
+}
+
 function animate() {
   requestAnimationFrame(animate);
-  if (cloudMesh) cloudMesh.rotation.y += 0.0005;
+
+  // Realistic cloud movement
+  if (cloudMesh) {
+    cloudMesh.rotation.y += 0.0005; // Slower, more realistic cloud movement
+  }
 
   if (isSpinning) {
     const elapsed = Date.now() - spinStartTime;
     const progress = Math.min(elapsed / SPIN_DURATION, 1);
-    const eased = easeInOutQuart(progress);
-
+    const easedProgress = easeInOutQuart(progress);
+    
+    // Simple rotation: rotate globe so destination comes to front (positive Z)
     const destLon = selectedMarker.userData.destination.lon;
     const destLat = selectedMarker.userData.destination.lat;
-
+    
+    // If point is at longitude X, rotate globe by -X to bring it to front
+    // If point is at latitude Y, tilt globe by -Y to center it
     const targetRotY = THREE.MathUtils.degToRad(-destLon);
-    const targetRotX = THREE.MathUtils.degToRad(destLat);
-
+    const targetRotX = THREE.MathUtils.degToRad(destLat * 0.5);
+    
+    // Add multiple full rotations plus final position
     const totalRotY = TOTAL_SPINS * Math.PI * 2 + targetRotY;
-    earthGroup.rotation.y = totalRotY * eased;
-    earthGroup.rotation.x = targetRotX * eased * 0.5;
-
+    const totalRotX = targetRotX;
+    
+    // Apply eased rotation
+    earthGroup.rotation.y = totalRotY * easedProgress;
+    earthGroup.rotation.x = totalRotX * easedProgress;
+    
+    // End spinning
     if (progress >= 1) {
       isSpinning = false;
       button.disabled = false;
@@ -143,42 +400,32 @@ function animate() {
     }
   }
 
-  markers.forEach(m => {
-    m.material.color.set((m === selectedMarker && !isSpinning) ? 0xff4444 : 0x888888);
+  // Update marker colors
+  markers.forEach(marker => {
+    if (marker === selectedMarker && !isSpinning) {
+      marker.material.color.set(0xff4444);
+    } else {
+      marker.material.color.set(0xffffff); // White markers stand out better on realistic Earth
+    }
   });
 
+  // Update glow effect
   if (selectedMarker && !isSpinning) {
-    const worldPos = selectedMarker.position.clone().applyMatrix4(earthGroup.matrixWorld);
-    glowSprite.position.copy(worldPos);
+    const worldPos = selectedMarker.position.clone();
+    worldPos.applyMatrix4(earthGroup.matrixWorld);
+    const scaleFactor = 1.08;
+    glowSprite.position.copy(worldPos.multiplyScalar(scaleFactor));
+    
+    const pulse = 0.2 + 0.1 * Math.sin(Date.now() * 0.004);
+    glowSprite.scale.set(pulse, pulse, pulse);
     glowSprite.visible = true;
+    
     updateTooltipPosition();
   }
 
   renderer.render(scene, camera);
 }
-
-function showTooltip() {
-  tooltip.textContent = "Your next budget trip: " + selectedMarker.userData.destination.name;
-  tooltip.style.display = "block";
-  updateTooltipPosition();
-}
-
-function updateTooltipPosition() {
-  const vector = selectedMarker.position.clone().applyMatrix4(earthGroup.matrixWorld);
-  vector.project(camera);
-  const x = (vector.x * 0.5 + 0.5) * container.clientWidth;
-  const y = (-vector.y * 0.5 + 0.5) * container.clientHeight;
-  tooltip.style.left = `${x}px`;
-  tooltip.style.top = `${y}px`;
-}
-
-function onResize() {
-  camera.aspect = container.clientWidth / container.clientHeight;
-  camera.updateProjectionMatrix();
-  renderer.setSize(container.clientWidth, container.clientHeight);
-}
-
-function easeInOutQuart(t) {
-  return t < 0.5 ? 8 * t * t * t * t : 1 - 8 * (--t) * t * t * t;
-}
-
+})();
+</script>
+</body>
+</html>
