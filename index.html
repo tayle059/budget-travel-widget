@@ -179,14 +179,24 @@ function init(){
 function latLonToXYZ(lat, lon, radius){
   const phi = (90-lat)*(Math.PI/180);
   const theta = (lon+180)*(Math.PI/180);
-  return { x:-radius*Math.sin(phi)*Math.cos(theta), y:radius*Math.cos(phi), z:radius*Math.sin(phi)*Math.sin(theta) };
+  // Corrected for texture alignment
+  const x = radius * Math.sin(phi) * Math.sin(theta);
+  const y = radius * Math.cos(phi);
+  const z = radius * Math.sin(phi) * Math.cos(theta);
+  return { x, y, z };
 }
 
 function startSpin(){
   tooltip.style.display="none";
   glowSprite.visible=false;
   selectedMarker = markers[Math.floor(Math.random()*markers.length)];
-  spinTarget = - (selectedMarker.userData.destination.lon*Math.PI/180) + 2*Math.PI*3; 
+
+  // Longer spin calculation
+  const currentY = earthMesh.rotation.y % (2*Math.PI);
+  const targetY = -selectedMarker.userData.destination.lon*Math.PI/180;
+  const spins = 6; // longer spin
+  spinTarget = currentY + (targetY - currentY) + spins*2*Math.PI;
+
   spinning=true;
 }
 
@@ -208,13 +218,20 @@ function animate(){
     markers.forEach(m=>m.material.color.set(0x888888));
   }
 
+  // Glow marker
   if(selectedMarker && !spinning){
-    glowSprite.position.copy(selectedMarker.position);
+    const scaleFactor = 1.05;
+    glowSprite.position.set(
+      selectedMarker.position.x * scaleFactor,
+      selectedMarker.position.y * scaleFactor,
+      selectedMarker.position.z * scaleFactor
+    );
     glowSprite.scale.set(0.2+0.05*Math.sin(Date.now()*0.01),0.2+0.05*Math.sin(Date.now()*0.01),1);
     glowSprite.visible=true;
     selectedMarker.material.color.set(0xff0000);
   }
 
+  // Tooltip follows marker
   if(selectedMarker && tooltip.style.display==="block"){
     const vector = selectedMarker.position.clone();
     vector.project(camera);
@@ -242,4 +259,3 @@ function onWindowResize(){
 
 </body>
 </html>
-
