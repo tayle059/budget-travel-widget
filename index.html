@@ -46,7 +46,7 @@ let markers = [], selectedMarker = null;
 let isSpinning = false;
 let spinStartTime = 0;
 const SPIN_DURATION = 3000; // 3 seconds
-const TOTAL_SPINS = 5; // Always 5 complete rotations
+const TOTAL_SPINS = 5; // full rotations
 let glowSprite;
 
 init();
@@ -81,22 +81,25 @@ function init(){
   directional.position.set(5, 3, 5);
   scene.add(directional);
 
-  // Create earth group to contain all earth-related objects
+  // Earth group
   earthGroup = new THREE.Group();
   scene.add(earthGroup);
 
   const loader = new THREE.TextureLoader();
 
-  // Earth with different texture for better coordinate mapping
+  // --- Updated textures from Wikimedia ---
   const earthGeo = new THREE.SphereGeometry(1, 64, 64);
   const earthMat = new THREE.MeshPhongMaterial({
-    map: loader.load('https://upload.wikimedia.org/wikipedia/commons/5/56/BlueMarble-2001-2002.jpg'),
-    bumpScale: 0.05
+    map: loader.load('https://upload.wikimedia.org/wikipedia/commons/2/2c/Blue_Marble_2001-2002.jpg'), // diffuse
+    bumpMap: loader.load('https://upload.wikimedia.org/wikipedia/commons/5/50/Earthbump4k.jpg'), // bump
+    bumpScale: 0.05,
+    specularMap: loader.load('https://upload.wikimedia.org/wikipedia/commons/6/63/Earthspec4k.jpg'), // specular
+    specular: new THREE.Color('grey')
   });
   earthMesh = new THREE.Mesh(earthGeo, earthMat);
   earthGroup.add(earthMesh);
 
-  // Add clouds back
+  // Clouds
   const cloudGeo = new THREE.SphereGeometry(1.01, 64, 64);
   const cloudMat = new THREE.MeshPhongMaterial({
     map: loader.load('https://threejs.org/examples/textures/planets/earth_clouds_1024.png'),
@@ -109,15 +112,15 @@ function init(){
   // Atmosphere
   const atmGeo = new THREE.SphereGeometry(1.03, 64, 64);
   const atmMat = new THREE.MeshBasicMaterial({
-    color: 0x00aaff, 
-    transparent: true, 
-    opacity: 0.1, 
+    color: 0x00aaff,
+    transparent: true,
+    opacity: 0.1,
     side: THREE.BackSide
   });
   atmosphereMesh = new THREE.Mesh(atmGeo, atmMat);
   earthGroup.add(atmosphereMesh);
 
-  // Restore normal-sized markers
+  // Markers
   destinations.forEach(dest => {
     const geo = new THREE.SphereGeometry(0.025, 8, 8);
     const mat = new THREE.MeshBasicMaterial({color: 0x888888});
@@ -131,30 +134,28 @@ function init(){
 
   // Glow sprite
   const spriteMat = new THREE.SpriteMaterial({
-    color: 0xff4444, 
-    transparent: true, 
-    opacity: 0.8, 
+    color: 0xff4444,
+    transparent: true,
+    opacity: 0.8,
     blending: THREE.AdditiveBlending
   });
   glowSprite = new THREE.Sprite(spriteMat);
-  glowSprite.scale.set(0.15, 0.15, 0.15);
+  glowSprite.scale.set(0.15,0.15,0.15);
   glowSprite.visible = false;
   scene.add(glowSprite);
 
   button.addEventListener('click', startSpin);
 
   window.addEventListener('resize', () => {
-    camera.aspect = container.clientWidth / container.clientHeight;
+    camera.aspect = container.clientWidth/container.clientHeight;
     camera.updateProjectionMatrix();
     renderer.setSize(container.clientWidth, container.clientHeight);
   });
 }
 
 function latLonToXYZ(lat, lon, radius) {
-  // Standard spherical coordinates - trying different mapping
-  const phi = THREE.MathUtils.degToRad(90 - lat); // Polar angle from north pole
-  const theta = THREE.MathUtils.degToRad(lon); // Azimuthal angle from prime meridian
-  
+  const phi = THREE.MathUtils.degToRad(90 - lat);
+  const theta = THREE.MathUtils.degToRad(lon);
   return {
     x: radius * Math.sin(phi) * Math.sin(theta),
     y: radius * Math.cos(phi),
@@ -163,118 +164,87 @@ function latLonToXYZ(lat, lon, radius) {
 }
 
 function startSpin() {
-  if (isSpinning) return;
-  
-  // Hide previous selection
-  hideTooltip();
-  glowSprite.visible = false;
-  
-  // Select random destination
-  selectedMarker = markers[Math.floor(Math.random() * markers.length)];
-  
-  // Disable button during spin
+  if(isSpinning) return;
+  tooltip.style.display="none";
+  glowSprite.visible=false;
+
+  selectedMarker = markers[Math.floor(Math.random()*markers.length)];
+
   button.disabled = true;
   button.textContent = "Spinning...";
-  
-  // Start spinning
   isSpinning = true;
   spinStartTime = Date.now();
-}
-
-function hideTooltip() {
-  tooltip.style.display = "none";
-}
-
-function showTooltip() {
-  if (!selectedMarker) return;
-  
-  tooltip.textContent = "Your next budget trip: " + selectedMarker.userData.destination.name;
-  tooltip.style.display = "block";
-  updateTooltipPosition();
-}
-
-function updateTooltipPosition() {
-  if (!selectedMarker || tooltip.style.display === "none") return;
-  
-  const vector = selectedMarker.position.clone();
-  vector.applyMatrix4(earthGroup.matrixWorld);
-  vector.project(camera);
-  
-  const x = (vector.x * 0.5 + 0.5) * container.clientWidth;
-  const y = (-vector.y * 0.5 + 0.5) * container.clientHeight;
-  
-  tooltip.style.left = `${x}px`;
-  tooltip.style.top = `${y}px`;
-}
-
-function easeInOutQuart(t) {
-  return t < 0.5 ? 8 * t * t * t * t : 1 - 8 * (--t) * t * t * t;
 }
 
 function animate() {
   requestAnimationFrame(animate);
 
-  // Cloud rotation
-  if (cloudMesh) {
-    cloudMesh.rotation.y += 0.0008;
-  }
+  // Rotate clouds
+  if(cloudMesh) cloudMesh.rotation.y += 0.0008;
 
-  if (isSpinning) {
+  if(isSpinning){
     const elapsed = Date.now() - spinStartTime;
     const progress = Math.min(elapsed / SPIN_DURATION, 1);
-    const easedProgress = easeInOutQuart(progress);
-    
-    // Simple rotation: rotate globe so destination comes to front (positive Z)
+    const eased = easeInOutQuart(progress);
+
     const destLon = selectedMarker.userData.destination.lon;
     const destLat = selectedMarker.userData.destination.lat;
-    
-    // If point is at longitude X, rotate globe by -X to bring it to front
-    // If point is at latitude Y, tilt globe by -Y to center it
+
     const targetRotY = THREE.MathUtils.degToRad(-destLon);
     const targetRotX = THREE.MathUtils.degToRad(destLat * 0.5);
-    
-    // Add multiple full rotations plus final position
+
     const totalRotY = TOTAL_SPINS * Math.PI * 2 + targetRotY;
     const totalRotX = targetRotX;
-    
-    // Apply eased rotation
-    earthGroup.rotation.y = totalRotY * easedProgress;
-    earthGroup.rotation.x = totalRotX * easedProgress;
-    
-    // End spinning
-    if (progress >= 1) {
-      isSpinning = false;
-      button.disabled = false;
-      button.textContent = "Pick My Travel Destination";
+
+    earthGroup.rotation.y = totalRotY * eased;
+    earthGroup.rotation.x = totalRotX * eased;
+
+    if(progress>=1){
+      isSpinning=false;
+      button.disabled=false;
+      button.textContent="Pick My Travel Destination";
       showTooltip();
     }
   }
 
-  // Update marker colors
-  markers.forEach(marker => {
-    if (marker === selectedMarker && !isSpinning) {
-      marker.material.color.set(0xff4444);
-    } else {
-      marker.material.color.set(0x888888);
-    }
+  // Update markers
+  markers.forEach(m=>{
+    m.material.color.set((m===selectedMarker && !isSpinning)?0xff4444:0x888888);
   });
 
-  // Update glow effect
-  if (selectedMarker && !isSpinning) {
-    const worldPos = selectedMarker.position.clone();
-    worldPos.applyMatrix4(earthGroup.matrixWorld);
-    const scaleFactor = 1.08;
-    glowSprite.position.copy(worldPos.multiplyScalar(scaleFactor));
-    
-    const pulse = 0.15 + 0.05 * Math.sin(Date.now() * 0.005);
-    glowSprite.scale.set(pulse, pulse, pulse);
-    glowSprite.visible = true;
-    
+  // Glow
+  if(selectedMarker && !isSpinning){
+    const worldPos = selectedMarker.position.clone().applyMatrix4(earthGroup.matrixWorld).multiplyScalar(1.08);
+    glowSprite.position.copy(worldPos);
+    const pulse = 0.15 + 0.05 * Math.sin(Date.now()*0.005);
+    glowSprite.scale.set(pulse,pulse,pulse);
+    glowSprite.visible=true;
     updateTooltipPosition();
   }
 
-  renderer.render(scene, camera);
+  renderer.render(scene,camera);
 }
+
+function showTooltip(){
+  tooltip.textContent = "Your next budget trip: "+selectedMarker.userData.destination.name;
+  tooltip.style.display="block";
+  updateTooltipPosition();
+}
+
+function updateTooltipPosition(){
+  if(!selectedMarker || tooltip.style.display==="none") return;
+  const vector = selectedMarker.position.clone().applyMatrix4(earthGroup.matrixWorld);
+  vector.project(camera);
+  const x = (vector.x*0.5+0.5)*container.clientWidth;
+  const y = (-vector.y*0.5+0.5)*container.clientHeight;
+  tooltip.style.left=`${x}px`;
+  tooltip.style.top=`${y}px`;
+}
+
+function easeInOutQuart(t){
+  return t<0.5 ? 8*t*t*t*t : 1-8*(--t)*t*t*t;
+}
+
 })();
 </script>
 </body>
